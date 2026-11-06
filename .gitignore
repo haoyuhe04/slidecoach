@@ -1,0 +1,12 @@
+.venv/
+data/
+__pycache__/
+.pytest_cache/
+.env
+.env.*
+!.env.example
+*.pyc
+backups/
+*.zip
+.DS_Store
+__MACOSX/

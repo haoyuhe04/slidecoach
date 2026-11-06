@@ -1,0 +1,18 @@
+[Unit]
+Description=SlideCoach course review app
+After=network.target
+
+[Service]
+Type=simple
+# Place the extracted project at ~/apps/slidecoach, or edit these three paths.
+WorkingDirectory=%h/apps/slidecoach
+EnvironmentFile=%h/apps/slidecoach/.env
+ExecStart=%h/apps/slidecoach/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8787 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
