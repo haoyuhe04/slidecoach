@@ -104,6 +104,9 @@ async def structured(prompt, schema):
 
 
 async def generate(page, mode, level, previous):
+    if mode == "teach":
+        from . import teaching
+        return await teaching.generate(page, level)
     source = page["text"][:6000]
     fragments = sources.passages(source, page["number"])
     if not fragments:
@@ -131,6 +134,9 @@ hint1 是不直接给答案的方向性追问，hint2 是更具体的引导。re
 
 
 async def evaluate(material, answer, history, mode, dispute=None):
+    if material.get("teaching_version") == 1:
+        from . import teaching
+        return await teaching.evaluate(material, answer, history, dispute)
     prompt = f"""核对学生回答。只用给出的材料片段与参考要点。
 correct=关键意思及理由正确；partial=部分正确但遗漏；incorrect=存在明确矛盾；uncertain=材料不足或表述歧义，必须先澄清。
 explanation 用最多两句指出学生已经说明的内容和一个具体缺口，不能编造学生没有说的话。回答有误或不完整时，不要直接复述完整标准答案或逐条揭示全部要点，把完整解释留给用户主动查看；next_question 只提出一个能推进思考的短问题。完全回答正确时简要说明理由，next_question 可为空。避免训斥式语气和重复长篇解析。

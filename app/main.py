@@ -348,6 +348,11 @@ def session_view(ident, user):
     with core.db() as c:
         turns = [dict(t) for t in c.execute("SELECT * FROM turns WHERE session_id=? ORDER BY rowid", (ident,))]
         for t in turns:
+            material = json.loads(t["material"])
+            if material.get("teaching_version") == 1:
+                t["teaching_brief"] = {"title": material["teaching_title"], "outline": material["outline"],
+                                       "instruction": f"请根据这些关键词，用自己的话向 AI 同学讲解{material['teaching_title']}。你可以自行组织讲解顺序。"}
+                t["source_page_numbers"] = [p["number"] for p in material["source_pages"]]
             t.pop("material")  # Never send reference answers before reveal.
             t["attempts"] = []
             for a in c.execute("SELECT * FROM attempts WHERE turn_id=? ORDER BY rowid", (t["id"],)):
@@ -379,7 +384,7 @@ def get_session(ident: str, user=Depends(current_user)):
 class NextTurn(BaseModel):
     request_key: str = Field(min_length=12, max_length=100)
     mode: Literal["quiz", "teach"]
-    focus: Literal["adaptive", "same"] = "adaptive"
+    focus: Literal["adaptive", "same", "next"] = "adaptive"
 
 
 @app.post("/api/sessions/{ident}/next")
@@ -400,7 +405,7 @@ async def next_turn(ident: str, data: NextTurn, user=Depends(current_user)):
                 raise HTTPException(400, "本轮已达 50 题，请回顾后开启新一轮。")
             last = turns[-1] if turns else None
             latest = c.execute("SELECT * FROM attempts WHERE turn_id=? ORDER BY rowid DESC LIMIT 1", (last["id"],)).fetchone() if last else None
-            stay = last and (data.focus == "same" or (latest and not latest["disputed"] and json.loads(latest["review"] or latest["feedback"])["verdict"] in ("partial", "incorrect")))
+            stay = last and (data.focus == "same" or (data.focus != "next" and latest and not latest["disputed"] and json.loads(latest["review"] or latest["feedback"])["verdict"] in ("partial", "incorrect")))
             if plan:
                 all_pages = [dict(p) for p in c.execute("SELECT * FROM pages WHERE course_id=? ORDER BY number", (session["course_id"],))]
                 if topics.fingerprint(all_pages) != plan[0]["course_fingerprint"]:
@@ -408,7 +413,8 @@ async def next_turn(ident: str, data: NextTurn, user=Depends(current_user)):
                 if stay:
                     active_topic = next((t for t in plan if t["id"] == last["topic_id"]), None)
                 if not active_topic:
-                    active_topic = min(plan, key=lambda topic: sum(t["topic_id"] == topic["id"] for t in turns))
+                    choices = [t for t in plan if not (data.focus == "next" and last and t["id"] == last["topic_id"])] or plan
+                    active_topic = min(choices, key=lambda topic: sum(t["topic_id"] == topic["id"] for t in turns))
                 candidates = active_topic["pages"]
                 number = min(candidates, key=lambda n: (sum(t["topic_id"] == active_topic["id"] and t["page_number"] == n for t in turns), n != active_topic["evidence_page"], n))
             elif stay:
@@ -422,9 +428,17 @@ async def next_turn(ident: str, data: NextTurn, user=Depends(current_user)):
             raise HTTPException(409, "来源页已变更或未确认，请先重新核对。")
         if active_topic:
             page["topic"] = {"title": active_topic["title"], "objective": active_topic["objective"]}
+        if data.mode == "teach":
+            related = active_topic["pages"] if active_topic else [number]
+            with core.db() as c:
+                page["related_pages"] = [dict(p) for p in c.execute("SELECT * FROM pages WHERE course_id=? ORDER BY number", (session["course_id"],)) if p["number"] in related and p["confirmed"]]
         question = await llm.generate(page, data.mode, session["level"], [t["question"] for t in turns if t["topic_id"] == active_topic["id"]] if active_topic else [t["question"] for t in turns if t["page_number"] == number])
-        question["source_text"] = page["text"][:6000]
+        if question.get("teaching_version") != 1:
+            question["source_text"] = page["text"][:6000]
         question["source_hash"] = hashlib.sha256(page["text"].encode()).hexdigest()
+        # Recheck all source snapshots after generation; edits must not race the model call.
+        if question.get("teaching_version") == 1:
+            check_sources(session["course_id"], question["source_pages"])
         turn_id = core.uid()
         response = {"id": turn_id}
         with core.db() as c:
@@ -434,9 +448,21 @@ async def next_turn(ident: str, data: NextTurn, user=Depends(current_user)):
         return response
 
 
+def check_sources(course_id, snapshots):
+    with core.db() as c:
+        current = {p["number"]: dict(p) for p in c.execute("SELECT number,text,confirmed FROM pages WHERE course_id=?", (course_id,))}
+    for source in snapshots:
+        page = current.get(source["number"])
+        if not page or not page["confirmed"] or hashlib.sha256(page["text"].encode()).hexdigest() != source["hash"]:
+            raise HTTPException(409, "讲授准备后相关课件已修改，请重新生成讲授提纲；原记录仍保留。")
+
+
 def ensure_current_source(turn, user):
     session = owned("sessions", turn["session_id"], user)
     material = json.loads(turn["material"])
+    if material.get("teaching_version") == 1:
+        check_sources(session["course_id"], material["source_pages"])
+        return session, material
     with core.db() as c:
         page = c.execute("SELECT text,confirmed FROM pages WHERE course_id=? AND number=?", (session["course_id"], turn["page_number"])).fetchone()
     if not page or not page["confirmed"] or hashlib.sha256(page["text"].encode()).hexdigest() != material["source_hash"]:
@@ -494,6 +520,8 @@ async def help_turn(ident: str, data: Help, user=Depends(current_user)):
             else:
                 c.execute("UPDATE turns SET source_opened=1 WHERE id=?", (ident,))
                 result = {"text": material["source_text"], "evidence": material["evidence"], "course_id": session["course_id"], "page": turn["page_number"]}
+                if material.get("teaching_version") == 1:
+                    result["pages"] = [{"number": p["number"], "title": p["title"]} for p in material["source_pages"]]
             c.execute("UPDATE sessions SET updated=? WHERE id=?", (core.now(), session["id"]))
         return result
 
@@ -514,8 +542,11 @@ async def dispute(ident: str, data: Dispute, user=Depends(current_user)):
         # Persist the dispute before a network call: timeout must not restore a contested grade.
         with core.db() as c:
             c.execute("UPDATE attempts SET disputed=1,dispute_reason=?,review=NULL WHERE id=?", (data.reason, ident))
+        with core.db() as c:
+            history = [dict(a) for a in c.execute("SELECT answer,feedback FROM attempts WHERE turn_id=? AND rowid<(SELECT rowid FROM attempts WHERE id=?) ORDER BY rowid", (turn["id"], ident))]
         try:
-            review = await llm.evaluate(material, attempt["answer"], [], turn["mode"], data.reason)
+            review = await llm.evaluate(material, attempt["answer"], history, turn["mode"], data.reason)
+            ensure_current_source(turn, user)
         except llm.ModelError as exc:
             return {"pending": True, "message": str(exc), "review": None}
         with core.db() as c:
