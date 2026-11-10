@@ -74,7 +74,7 @@ API 密钥只保存在自己的 `.env`，不要发到群里或写入前端。以
 uv run --locked --env-file .env python -m uvicorn app.main:app --host 127.0.0.1 --port 8787 --workers 1 --no-access-log
 ```
 
-打开 **http://127.0.0.1:8787**。终端保持运行，按 `Ctrl+C` 停止服务。修改 `.env` 后重新启动才会生效。
+打开 [http://127.0.0.1:8787](http://127.0.0.1:8787/)。终端保持运行，按 `Ctrl+C` 停止服务。修改 `.env` 后重新启动才会生效。
 
 这里显式使用 `--env-file .env` 加载配置；单独运行 `python` 不会自动读取该文件。有关加载规则见 [uv 配置文档](https://docs.astral.sh/uv/concepts/configuration-files/#environment-variable-files)。
 
@@ -110,7 +110,7 @@ uv run --locked python -m pytest -q
 ssh -N -L 127.0.0.1:8787:127.0.0.1:8787 your-user@your-server
 ```
 
-将用户名和服务器地址换成自己的，然后在本机打开 http://127.0.0.1:8787。若本地端口已占用，可把命令左侧的 8787 改成 8788，再访问 http://127.0.0.1:8788。
+将用户名和服务器地址换成自己的，然后在本机打开 [http://127.0.0.1:8787](http://127.0.0.1:8787/)。若本地端口已占用，可把命令左侧的 8787 改成 8788，再访问 [http://127.0.0.1:8788](http://127.0.0.1:8788/)。
 
 需要后台运行时，包内提供 `deploy/slidecoach.service`。模板假定项目位于 `~/apps/slidecoach`，其中已经安装 `.venv` 并配置 `.env`；否则先修改模板里的路径。停止之前前台启动的进程后，执行：
 
