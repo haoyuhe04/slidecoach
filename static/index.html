@@ -1,3 +1,40 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SlideCoach · 把课件学明白</title><link rel="stylesheet" href="/static/style.css"></head>
-<body><header><a class="brand" href="/">Slide<span>Coach</span></a><nav id="nav" hidden><button data-nav="library">我的课件</button><button data-nav="history">复习记录</button><button id="appearance" aria-label="切换深色外观">外观</button><span id="username"></span><button id="logout">退出</button></nav></header><div id="modelBanner" class="banner" role="status"></div><main id="main"></main><div id="toast" role="status" hidden></div><div id="busy" hidden role="status"><span class="spinner"></span><div><strong id="busyTitle">正在处理</strong><div class="muted">模型可能需要一段时间。当前输入已保留，请勿重复提交。</div></div></div><dialog id="dialog"><form method="dialog"><button class="close" aria-label="关闭对话框">×</button></form><div id="dialogContent"></div></dialog><script src="/static/app.js" defer></script></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title>SlideCoach · 把课件学明白</title>
+  <link rel="stylesheet" href="/static/style.css?v=20261110-notion-voice">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="SlideCoach 首页"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5.5h10.5A2.5 2.5 0 0 1 18 8v11H7.5A2.5 2.5 0 0 1 5 16.5z"/><path d="M5 16.5A2.5 2.5 0 0 1 7.5 14H18M9 8.5h5M9 11h3"/></svg></span><span>Slide<span class="brand-accent">Coach</span><small>把课件，学明白</small></span></a>
+    <div id="nav" class="sidebar-body" hidden>
+      <div class="nav-caption">学习空间</div>
+      <nav class="side-nav" aria-label="主要导航">
+        <button data-nav="library" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h4"/></svg><span>我的课件</span></button>
+        <button data-nav="history" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 10a8 8 0 1 1 0 5M4 4v6h6M12 7v5l3 2"/></svg><span>复习记录</span></button>
+      </nav>
+      <div class="sidebar-note"><span class="note-line"></span><p>不止看懂，<br>也能讲得清楚。</p><small>从一份课件开始。</small></div>
+      <div class="sidebar-account"><span class="avatar" id="avatar" aria-hidden="true">我</span><div class="account-copy"><strong id="username"></strong><small>个人学习空间</small></div><button id="logout" class="icon-button" aria-label="退出登录" title="退出登录"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M14 8l4 4-4 4M9 12h10"/></svg></button></div>
+    </div>
+  </aside>
+  <div class="app-shell">
+    <header class="app-header">
+      <a class="mobile-brand" href="/">Slide<span>Coach</span></a>
+      <div class="page-context"><span>学习空间</span><span aria-hidden="true">/</span><strong id="pageContext">我的课件</strong></div>
+      <div class="header-actions"><div id="modelBanner" class="banner" role="status"></div><button id="appearance" class="icon-button" aria-label="切换深色外观" title="切换外观"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"/></svg></button><button id="mobileLogout" class="icon-button mobile-logout" aria-label="退出登录" title="退出登录" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M14 8l4 4-4 4M9 12h10"/></svg></button></div>
+    </header>
+    <nav id="mobileNav" class="mobile-nav" aria-label="移动端导航" hidden><button data-nav="library">我的课件</button><button data-nav="history">复习记录</button></nav>
+    <main id="main" tabindex="-1"></main>
+    <footer class="app-footer">SlideCoach · 让每一轮复习都有依据</footer>
+  </div>
+  <div id="toast" role="status" hidden></div>
+  <div id="busy" hidden role="status"><span class="spinner"></span><div><strong id="busyTitle">正在处理</strong><div class="muted">正在整理，请保留当前页面。</div></div></div>
+  <dialog id="dialog"><form method="dialog"><button class="close icon-button" aria-label="关闭对话框">×</button></form><div id="dialogContent"></div></dialog>
+  <script src="/static/voice.js?v=20261110-notion-voice" defer></script>
+  <script src="/static/app.js?v=20261110-notion-voice" defer></script>
+</body>
+</html>
