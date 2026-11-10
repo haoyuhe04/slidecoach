@@ -1,0 +1,15 @@
+[Unit]
+Description=SlideCoach public HTTPS tunnel
+After=network-online.target slidecoach.service
+Wants=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/cloudflared tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:8787 --http-host-header 127.0.0.1:8787
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

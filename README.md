@@ -104,6 +104,8 @@ uv run --locked python -m pytest -q
 
 ## 6. 部署到自己的 Linux 服务器（可选）
 
+需要提供 `vercel.app` 入口时，可以把前端单独部署到 Vercel，后端和数据继续保留在自己的服务器。具体步骤见 [Vercel 前端部署说明](frontend/README.md)。
+
 先在服务器解压并完成前面的安装、配置和启动步骤。服务默认只监听服务器本机，可在自己的电脑建立 SSH 隧道：
 
 ```sh

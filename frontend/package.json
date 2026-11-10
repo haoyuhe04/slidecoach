@@ -1,0 +1,7 @@
+{
+  "name": "slidecoach-web",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

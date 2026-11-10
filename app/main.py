@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from contextlib import suppress
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -45,11 +46,23 @@ async def lifespan(app):
 app = FastAPI(title="SlideCoach", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
+def public_origins():
+    """Only exact, explicitly configured HTTPS origins can cross the proxy."""
+    origins = set()
+    for value in os.environ.get("SLIDECOACH_ALLOWED_ORIGINS", "").split(","):
+        value = value.strip().rstrip("/")
+        parsed = urlsplit(value)
+        if parsed.scheme == "https" and parsed.netloc and not parsed.username and not parsed.password and not parsed.path and not parsed.query and not parsed.fragment:
+            origins.add(value)
+    return origins
+
+
 @app.middleware("http")
 async def boundaries(request: Request, call_next):
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
-        if origin and origin not in ("http://" + request.headers.get("host", ""), "https://" + request.headers.get("host", "")):
+        same_host = {"http://" + request.headers.get("host", ""), "https://" + request.headers.get("host", "")}
+        if origin and origin not in same_host and origin not in public_origins():
             return JSONResponse({"detail": "请求来源不匹配，请从应用页面操作。"}, status_code=403)
         try:
             size = int(request.headers.get("content-length", "0"))
@@ -112,11 +125,12 @@ class Credentials(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
-def set_login(response, user_id):
+def set_login(response, user_id, request):
     token = core.uid() + core.uid()
     with core.db() as c:
         c.execute("INSERT INTO auth VALUES(?,?,?)", (hashlib.sha256(token.encode()).hexdigest(), user_id, core.now() + 7 * 86400))
-    response.set_cookie("slidecoach_session", token, httponly=True, samesite="lax", secure=os.environ.get("SLIDECOACH_SECURE_COOKIE") == "1", max_age=7 * 86400)
+    secure = os.environ.get("SLIDECOACH_SECURE_COOKIE") == "1" or request.url.scheme == "https" or request.headers.get("origin", "") in public_origins()
+    response.set_cookie("slidecoach_session", token, httponly=True, samesite="lax", secure=secure, max_age=7 * 86400)
 
 
 @app.post("/api/register")
@@ -129,7 +143,7 @@ async def register(data: Credentials, request: Request, response: Response):
             c.execute("INSERT INTO users VALUES(?,?,?,?)", (ident, data.name, hashed, core.now()))
     except sqlite3.IntegrityError:
         raise HTTPException(409, "这个用户名已被使用。")
-    set_login(response, ident)
+    set_login(response, ident, request)
     return {"id": ident, "name": data.name}
 
 
@@ -140,7 +154,7 @@ async def login(data: Credentials, request: Request, response: Response):
         row = c.execute("SELECT * FROM users WHERE name=?", (data.name,)).fetchone()
     if not row or not await asyncio.to_thread(core.password_ok, data.password, row["password"]):
         raise HTTPException(401, "用户名或密码不正确。")
-    set_login(response, row["id"])
+    set_login(response, row["id"], request)
     return {"id": row["id"], "name": row["name"]}
 
 

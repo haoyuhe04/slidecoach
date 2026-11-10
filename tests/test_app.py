@@ -41,6 +41,28 @@ def register(c, name="testuser"):
     return r.json()
 
 
+def test_public_frontend_origin_and_secure_cookie(client, monkeypatch):
+    monkeypatch.setenv("SLIDECOACH_ALLOWED_ORIGINS", "https://slidecoach.example/")
+    result = client.post("/api/register", headers={"Origin": "https://slidecoach.example"}, json={"name": "public-user", "password": "test-password-42"})
+    assert result.status_code == 200
+    cookie = result.headers["set-cookie"].lower()
+    assert "secure" in cookie and "httponly" in cookie and "samesite=lax" in cookie
+    assert "domain=" not in cookie
+
+
+def test_untrusted_proxy_origins_are_rejected(client, monkeypatch):
+    monkeypatch.setenv("SLIDECOACH_ALLOWED_ORIGINS", "https://slidecoach.example,http://untrusted.example,https://wrong.example/path")
+    for origin in ("https://slidecoach.example.evil.test", "https://different.vercel.app", "http://untrusted.example", "https://wrong.example"):
+        result = client.post("/api/register", headers={"Origin": origin}, json={"name": "blocked", "password": "test-password-42"})
+        assert result.status_code == 403
+
+
+def test_forwarded_host_does_not_bypass_origin_check(client, monkeypatch):
+    monkeypatch.delenv("SLIDECOACH_ALLOWED_ORIGINS", raising=False)
+    result = client.post("/api/register", headers={"Origin": "https://attacker.example", "X-Forwarded-Host": "attacker.example"}, json={"name": "blocked", "password": "test-password-42"})
+    assert result.status_code == 403
+
+
 def upload(c):
     r = c.post("/api/courses", files={"file": ("测试课件.pptx", deck())})
     assert r.status_code == 200, r.text
