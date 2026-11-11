@@ -33,3 +33,35 @@ h1{font-weight:700;letter-spacing:-1.1px}.sidebar{background:var(--surface-alt);
 .mobile-logout{display:none}@media(max-width:850px){.mobile-logout{display:inline-flex}}@media(max-width:480px){.header-actions .banner{display:none}}
 
 @media(min-width:851px) and (max-height:800px){body[data-view=practice] main{padding-top:28px}.session-heading{margin-bottom:18px}.voice-area>textarea{min-height:180px}.answer-composer{padding:22px}.learning-help{margin-top:17px;padding-top:14px}}
+
+/* Course AI chat */
+.heading-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chat-heading{align-items:flex-start;gap:20px;flex-wrap:wrap}
+.chat-heading .text-link{margin-bottom:12px}
+.chat-heading #clearChat{margin-left:auto;font-size:11px;flex-shrink:0}
+.chat-layout{max-width:920px;margin:0 auto}
+.chat-shell{display:flex;flex-direction:column;gap:18px;min-width:0}
+.chat-thread{display:flex;flex-direction:column;gap:4px;min-height:280px;max-height:min(58vh,640px);overflow:auto;padding-right:4px}
+.chat-msg .bubble{margin-bottom:12px}
+.chat-msg.user{display:flex;justify-content:flex-end}
+.chat-msg.user .bubble{max-width:82%;background:var(--surface-alt);border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.chat-msg.user .label{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.chat-msg.user .student-text{padding-left:0;color:var(--text)}
+.chat-msg.assistant .bubble.ai{max-width:100%}
+.chat-msg.assistant .bubble.ai>p{white-space:pre-wrap}
+.chat-citations{border-top:1px solid var(--line);padding-top:14px}
+.chat-citation{margin:8px 0}
+.chat-citation summary{font-size:11px;color:var(--muted);cursor:pointer}
+.chat-citation blockquote{margin:8px 0 0;padding:10px 12px;background:var(--surface-alt);border-left:2px solid var(--line);border-radius:0 8px 8px 0;font-size:12px;color:var(--muted)}
+.chat-empty{text-align:center;padding:44px 16px;color:var(--muted)}
+.chat-empty .empty-symbol{margin-bottom:14px}
+.chat-empty h2{font-size:18px;color:var(--text);margin:0 0 8px}
+.chat-empty p{margin:0}
+.chat-suggestions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:20px}
+.chat-suggestion{border:1px solid var(--line);background:var(--surface-alt);border-radius:999px;padding:8px 14px;font-size:12px;color:var(--text)}
+.chat-suggestion:hover{background:var(--soft);border-color:#b9b9b3}
+.chat-composer{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:16px}
+.chat-composer textarea{min-height:96px}
+.chat-composer-foot{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.chat-msg .pill.warning{background:var(--soft);color:var(--warn);border-color:var(--line)}
+@media(max-width:720px){.chat-thread{max-height:none}.chat-msg.user .bubble{max-width:100%}.chat-composer-foot{flex-wrap:wrap}}

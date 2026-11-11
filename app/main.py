@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import chat as chat_engine
 from . import core, llm, materials, topics
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -247,6 +248,77 @@ async def organize_course(ident: str, user=Depends(current_user)):
         return result
 
 
+class ChatInput(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    request_key: str = Field(min_length=12, max_length=100)
+
+
+def chat_message_view(row):
+    return {
+        "id": row["id"],
+        "role": row["role"],
+        "content": row["content"],
+        "citations": json.loads(row["citations"]),
+        "insufficient": bool(row["insufficient"]),
+        "created": row["created"],
+    }
+
+
+@app.get("/api/courses/{ident}/chat")
+def get_chat(ident: str, user=Depends(current_user)):
+    owned("courses", ident, user)
+    with core.db() as c:
+        rows = [dict(r) for r in c.execute(
+            "SELECT * FROM chat_messages WHERE course_id=? ORDER BY rowid DESC LIMIT 100", (ident,))]
+    return {"messages": [chat_message_view(r) for r in reversed(rows)], "model_configured": core.model_configured()}
+
+
+@app.post("/api/courses/{ident}/chat")
+async def send_chat(ident: str, data: ChatInput, user=Depends(current_user)):
+    async with locks["user:" + user["id"]]:
+        item = owned("courses", ident, user)
+        cached = op_cached(user, data.request_key, "chat:" + ident)
+        if cached:
+            return cached
+        question = data.message.strip()
+        if not question:
+            raise HTTPException(400, "请先写下你的问题。")
+        with core.db() as c:
+            count = c.execute("SELECT COUNT(*) FROM chat_messages WHERE course_id=?", (ident,)).fetchone()[0]
+            if count >= 100:
+                raise HTTPException(400, "这份课件的对话已较多，请清空后再继续。")
+            pages = [dict(p) for p in c.execute("SELECT * FROM pages WHERE course_id=? ORDER BY number", (ident,))]
+            outline = c.execute("SELECT data FROM outlines WHERE course_id=?", (ident,)).fetchone()
+            history = [dict(r) for r in c.execute(
+                "SELECT role,content FROM chat_messages WHERE course_id=? ORDER BY rowid DESC LIMIT ?",
+                (ident, chat_engine.HISTORY_LIMIT))][::-1]
+        result = await chat_engine.answer(item, pages, json.loads(outline["data"]) if outline else None, history, question)
+        stamp = core.now()
+        response = {
+            "user": {"id": core.uid(), "role": "user", "content": question, "citations": [],
+                     "insufficient": False, "created": stamp},
+            "reply": {"id": core.uid(), "role": "assistant", "content": result["answer"],
+                      "citations": result["citations"], "insufficient": result["insufficient"], "created": stamp},
+        }
+        with core.db() as c:
+            c.execute("INSERT INTO chat_messages VALUES(?,?,?,?,?,?,?)", (
+                response["user"]["id"], ident, "user", question, "[]", 0, stamp))
+            c.execute("INSERT INTO chat_messages VALUES(?,?,?,?,?,?,?)", (
+                response["reply"]["id"], ident, "assistant", response["reply"]["content"],
+                core.dump(result["citations"]), int(result["insufficient"]), stamp))
+            op_save(c, user, data.request_key, "chat:" + ident, response)
+        return response
+
+
+@app.delete("/api/courses/{ident}/chat")
+async def clear_chat(ident: str, user=Depends(current_user)):
+    async with locks["user:" + user["id"]]:
+        owned("courses", ident, user)
+        with core.db() as c:
+            c.execute("DELETE FROM chat_messages WHERE course_id=?", (ident,))
+    return {"ok": True}
+
+
 class PageEdit(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     text: str = Field(max_length=30000)
@@ -260,6 +332,9 @@ def edit_page(ident: str, number: int, data: PageEdit, user=Depends(current_user
         raise HTTPException(400, "文字不足以支持出题，请先补充至少 40 字的完整内容。")
     with core.db() as c:
         count = c.execute("UPDATE pages SET title=?,text=?,confirmed=? WHERE course_id=? AND number=?", (data.title, data.text.strip(), data.confirmed, ident, number)).rowcount
+        if count:
+            # Old answers cite page text that may no longer exist.
+            c.execute("DELETE FROM chat_messages WHERE course_id=?", (ident,))
     if not count:
         raise HTTPException(404, "页面不存在。")
     return {"ok": True}

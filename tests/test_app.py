@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from pptx import Presentation
 
 from app import core, llm, materials
+from app import chat as chat_engine
 from app.main import app, locks, attempt_rates
 
 SOURCE = "TCP 通过三次握手同步双方的初始序列号。第二次报文确认客户端的 SYN，并携带服务端的 SYN。第三次报文由客户端发送，用来确认服务端的初始序列号。SYN 占用一个序列号。"
@@ -87,6 +88,14 @@ def model(monkeypatch):
         return {"verdict": "correct" if answer == "确认服务端" else "partial", "explanation": "这里的确认对象是服务端的初始序列号。", "next_question": "请说明依据。"}
     monkeypatch.setattr(llm, "generate", generate)
     monkeypatch.setattr(llm, "evaluate", evaluate)
+
+
+@pytest.fixture
+def chat_model(monkeypatch):
+    async def chat_answer(course, pages, outline, history, question):
+        return {"answer": "第二次握手确认客户端的 SYN，并携带服务端的初始序列号。", "insufficient": False,
+                "citations": [{"page": 1, "text": SOURCE[:60]}]}
+    monkeypatch.setattr(chat_engine, "answer", chat_answer)
 
 
 def next_question(c, s, key=None, mode="quiz"):
@@ -173,7 +182,7 @@ def test_account_isolation_and_csrf(client, model):
     t = next_question(client, s)
     client.post("/api/logout")
     register(client, "bob")
-    for url in (f"/api/courses/{course}", f"/api/courses/{course}/download", f"/api/courses/{course}/preview/1", f"/api/sessions/{s}"):
+    for url in (f"/api/courses/{course}", f"/api/courses/{course}/download", f"/api/courses/{course}/preview/1", f"/api/sessions/{s}", f"/api/courses/{course}/chat"):
         assert client.get(url).status_code == 404
     assert client.post(f"/api/turns/{t}/help", json={"kind": "reveal"}).status_code == 404
     assert client.delete(f"/api/courses/{course}").status_code == 404
@@ -303,3 +312,72 @@ def test_expiry_cleans_temporary_records_but_keeps_saved_sessions(client):
     assert client.get('/api/sessions/' + saved).status_code == 200
     with core.db() as c:
         assert c.execute('SELECT COUNT(*) FROM operations').fetchone()[0] == 0
+
+
+def test_course_chat_persists_and_is_idempotent(client, chat_model):
+    register(client)
+    course = upload(client)
+    key = str(uuid.uuid4())
+    payload = {"message": "第二次握手确认了什么？", "request_key": key}
+    r = client.post(f"/api/courses/{course}/chat", json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["reply"]["citations"][0]["page"] == 1
+    assert body["user"]["content"] == payload["message"]
+    assert client.post(f"/api/courses/{course}/chat", json=payload).json()["reply"]["id"] == body["reply"]["id"]
+    messages = client.get(f"/api/courses/{course}/chat").json()["messages"]
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert messages[1]["citations"][0]["page"] == 1
+
+
+def test_course_chat_clears_on_edit_and_manual_clear(client, chat_model):
+    register(client)
+    course = upload(client)
+    assert client.post(f"/api/courses/{course}/chat", json={"message": "确认对象是谁？", "request_key": str(uuid.uuid4())}).status_code == 200
+    page = client.get("/api/courses/" + course).json()["pages"][0]
+    assert client.put(f"/api/courses/{course}/pages/1", json={"title": page["title"], "text": page["text"], "confirmed": True}).status_code == 200
+    assert client.get(f"/api/courses/{course}/chat").json()["messages"] == []
+    assert client.post(f"/api/courses/{course}/chat", json={"message": "再问一次", "request_key": str(uuid.uuid4())}).status_code == 200
+    assert client.delete(f"/api/courses/{course}/chat").status_code == 200
+    assert client.get(f"/api/courses/{course}/chat").json()["messages"] == []
+
+
+def test_course_chat_is_private_to_account(client, chat_model):
+    register(client, "alice")
+    course = upload(client)
+    client.post(f"/api/courses/{course}/chat", json={"message": "确认对象是谁？", "request_key": str(uuid.uuid4())})
+    client.post("/api/logout")
+    register(client, "bob")
+    assert client.get(f"/api/courses/{course}/chat").status_code == 404
+    assert client.post(f"/api/courses/{course}/chat", json={"message": "偷看", "request_key": str(uuid.uuid4())}).status_code == 404
+    assert client.delete(f"/api/courses/{course}/chat").status_code == 404
+
+
+def test_course_chat_without_model_does_not_store_messages(client, monkeypatch):
+    register(client)
+    course = upload(client)
+    monkeypatch.setattr(core, "MODEL", "")
+    r = client.post(f"/api/courses/{course}/chat", json={"message": "第二次握手确认了什么？", "request_key": str(uuid.uuid4())})
+    assert r.status_code == 503 and "尚未配置" in r.json()["detail"]
+    assert client.get(f"/api/courses/{course}/chat").json()["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_course_chat_rejects_invalid_citation(monkeypatch):
+    async def wrong(prompt, schema):
+        return chat_engine.ChatReply(answer="这是一个足够长度的回答，但引用了不存在的片段。", evidence_ids=["p1-999"], insufficient=False)
+    monkeypatch.setattr(llm, "structured", wrong)
+    pages = [{"number": 1, "title": "TCP 三次握手", "text": SOURCE}]
+    with pytest.raises(llm.ModelError, match="无效的来源编号"):
+        await chat_engine.answer({"title": "测试课件"}, pages, None, [], "第二次握手确认了什么？")
+
+
+def test_course_chat_retrieval_prefers_matching_page():
+    pages = [
+        {"number": 1, "title": "数据库索引结构", "text": "B+ 树索引通过多路平衡树组织数据页，范围查询需要定位叶子节点。" * 3},
+        {"number": 2, "title": "TCP 三次握手", "text": SOURCE * 3},
+    ]
+    picked = chat_engine.select_pages(pages, "TCP 第二次握手确认了什么？", None)
+    assert picked[0]["number"] == 2
+    outline = {"topics": [{"title": "数据库索引", "objective": "理解索引结构", "pages": [1]}]}
+    assert chat_engine.select_pages(pages, "简单总结一下", outline)[0]["number"] == 1

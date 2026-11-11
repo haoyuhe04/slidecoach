@@ -62,8 +62,10 @@ def init_db():
         CREATE TABLE IF NOT EXISTS operations(user_id TEXT NOT NULL, key TEXT NOT NULL, route TEXT NOT NULL, response TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(user_id,key,route));
         CREATE TABLE IF NOT EXISTS model_usage(at INTEGER NOT NULL, model TEXT NOT NULL, tokens INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS outlines(course_id TEXT PRIMARY KEY REFERENCES courses(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, data TEXT NOT NULL, created INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS chat_messages(id TEXT PRIMARY KEY, course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, citations TEXT NOT NULL DEFAULT '[]', insufficient INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id,updated);
         CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id,created);
+        CREATE INDEX IF NOT EXISTS idx_chat_course ON chat_messages(course_id,created);
         ''')
         if "topic_plan" not in {r[1] for r in c.execute("PRAGMA table_info(sessions)")}:
             c.execute("ALTER TABLE sessions ADD COLUMN topic_plan TEXT NOT NULL DEFAULT '[]'")
